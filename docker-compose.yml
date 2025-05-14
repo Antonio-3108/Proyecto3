@@ -1,0 +1,48 @@
+version: '3.8'
+
+services:
+  rabbitmq:
+    image: rabbitmq:3-management
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    environment:
+      - RABBITMQ_DEFAULT_USER=guest
+      - RABBITMQ_DEFAULT_PASS=guest
+
+  influxdb:
+    image: influxdb:2.0
+    ports:
+      - "8086:8086"
+    environment:
+      - DOCKER_INFLUXDB_INIT_MODE=setup
+      - DOCKER_INFLUXDB_INIT_USERNAME=admin
+      - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
+      - DOCKER_INFLUXDB_INIT_ORG=myorg
+      - DOCKER_INFLUXDB_INIT_BUCKET=mybucket
+      - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=mytoken
+    volumes:
+      - influxdb_data:/var/lib/influxdb2
+
+  publisher:
+    build: ./publisher
+    ports:
+      - "8000:8000"
+    depends_on:
+      - rabbitmq
+      - influxdb
+    environment:
+      - RABBITMQ_HOST=rabbitmq
+      - INFLUXDB_URL=http://influxdb:8086
+      - INFLUXDB_TOKEN=mytoken
+      - INFLUXDB_ORG=myorg
+      - INFLUXDB_BUCKET=mybucket
+
+  consumer:
+    build: ./consumer
+    depends_on:
+      - rabbitmq
+
+volumes:
+  influxdb_data:
+
