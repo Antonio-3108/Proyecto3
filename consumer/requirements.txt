@@ -1,1 +1,2 @@
 pika
+influxdb-client==1.36.1
