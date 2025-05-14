@@ -19,7 +19,7 @@ services:
       - DOCKER_INFLUXDB_INIT_USERNAME=admin
       - DOCKER_INFLUXDB_INIT_PASSWORD=admin123
       - DOCKER_INFLUXDB_INIT_ORG=myorg
-      - DOCKER_INFLUXDB_INIT_BUCKET=Ad Impression
+      - DOCKER_INFLUXDB_INIT_BUCKET=test_1
       - DOCKER_INFLUXDB_INIT_ADMIN_TOKEN=mytoken
     volumes:
       - influxdb_data:/var/lib/influxdb2
@@ -36,7 +36,7 @@ services:
       - INFLUXDB_URL=http://influxdb:8086
       - INFLUXDB_TOKEN=mytoken
       - INFLUXDB_ORG=myorg
-      - INFLUXDB_BUCKET=Ad Impression
+      - INFLUXDB_BUCKET=test_1
 
   consumer:
     build: ./consumer
@@ -48,7 +48,7 @@ services:
       - INFLUXDB_URL=http://influxdb:8086
       - INFLUXDB_TOKEN=mytoken
       - INFLUXDB_ORG=myorg
-      - INFLUXDB_BUCKET=Ad Impression
+      - INFLUXDB_BUCKET=test_1
 
 volumes:
   influxdb_data:

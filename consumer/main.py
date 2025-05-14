@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://influxdb:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "mytoken")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "myorg")
-INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "Ad Impression")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "test_1")
 
 # Initialize InfluxDB client
 client = InfluxDBClient(url=INFLUXDB_URL, token=INFLUXDB_TOKEN, org=INFLUXDB_ORG)
@@ -27,7 +27,7 @@ def callback(ch, method, properties, body):
         logger.info(f"Received JSON message: {message}")
         
         # Guardar en InfluxDB
-        point = Point("Ad Impression") \
+        point = Point("impressions") \
             .tag("impression_id", message["impression_id"]) \
             .tag("session_id", message["session_id"]) \
             .tag("state", message["state"]) \
@@ -58,8 +58,8 @@ def consume():
     )
 
     channel = connection.channel()
-    channel.queue_declare(queue='Ad Impression')
-    channel.basic_consume(queue='Ad Impression', on_message_callback=callback, auto_ack=True)
+    channel.queue_declare(queue='demo_queue')
+    channel.basic_consume(queue='demo_queue', on_message_callback=callback, auto_ack=True)
     logger.info("Waiting for messages...")
     channel.start_consuming()
 

@@ -8,7 +8,6 @@ from typing import Dict, List, Any
 import json
 import logging
 from pydantic import BaseModel
-import uuid
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -109,30 +108,8 @@ async def send_message(payload: ImpressionPayload):
         channel.basic_publish(exchange='', routing_key='Ad Impression', body=message_content)
         connection.close()
         
-        # Guardar cada anuncio en la tabla AdInfo y recolectar sus uids
-        ad_uids = []
-        for ad_info in payload.ads:
-            ad_uid = str(uuid.uuid4())
-            ad_point = Point("AdInfo") \
-                .tag("uid", ad_uid) \
-                .tag("impression_id", payload.impression_id) \
-                .field("advertiser_id", ad_info.advertiser.advertiser_id) \
-                .field("advertiser_name", ad_info.advertiser.advertiser_name) \
-                .field("campaign_id", ad_info.campaign.campaign_id) \
-                .field("campaign_name", ad_info.campaign.campaign_name) \
-                .field("ad_id", ad_info.ad.ad_id) \
-                .field("ad_name", ad_info.ad.ad_name) \
-                .field("ad_text", ad_info.ad.ad_text) \
-                .field("ad_link", ad_info.ad.ad_link) \
-                .field("ad_position", ad_info.ad.ad_position) \
-                .field("ad_format", ad_info.ad.ad_format) \
-                .time(payload.timestamp)
-            
-            write_api.write(bucket=INFLUXDB_BUCKET, record=ad_point)
-            ad_uids.append(ad_uid)
-        
-        # Guardar la impresión principal en InfluxDB con la lista de uids de anuncios
-        impression_point = Point("Ad Impression") \
+        # Guardar en InfluxDB
+        point = Point("Ad Impression") \
             .field("impression_id", payload.impression_id) \
             .field("user_ip", payload.user_ip) \
             .field("user_agent", payload.user_agent) \
@@ -140,9 +117,9 @@ async def send_message(payload: ImpressionPayload):
             .field("search_keywords", payload.search_keywords) \
             .field("session_id", payload.session_id) \
             .field("timestamp", payload.timestamp.isoformat()) \
-            .field("ads", json.dumps(ad_uids))
+            .field("ads", json.dumps([ad.dict() for ad in payload.ads], cls=DateTimeEncoder))
         
-        write_api.write(bucket=INFLUXDB_BUCKET, record=impression_point)
+        write_api.write(bucket=INFLUXDB_BUCKET, record=point)
         
         return {"message": "Message sent to RabbitMQ and stored in InfluxDB", "payload": payload.dict()}
     except Exception as e:
@@ -151,8 +128,7 @@ async def send_message(payload: ImpressionPayload):
 
 @app.get("/messages")
 def get_messages():
-    # Primero obtenemos las impresiones
-    impression_query = f'''
+    query = f'''
     from(bucket:"{INFLUXDB_BUCKET}")
         |> range(start: -1h)
         |> filter(fn: (r) => r["_measurement"] == "Ad Impression")
@@ -160,61 +136,20 @@ def get_messages():
         |> sort(columns: ["_time"], desc: true)
         |> limit(n: 1)
     '''
-    impression_result = client.query_api().query(query=impression_query, org=INFLUXDB_ORG)
+    result = client.query_api().query(query=query, org=INFLUXDB_ORG)
     
     messages = []
-    for table in impression_result:
+    for table in result:
         for record in table.records:
-            impression_id = record.values.get("impression_id")
-            ad_uids = json.loads(record.values.get("ads", "[]"))
-            logger.info(f"Found impression {impression_id} with ad_uids: {ad_uids}")
-            
-            # Obtener los anuncios asociados usando los uids
-            ads = []
-            for ad_uid in ad_uids:
-                logger.info(f"Querying for ad with uid: {ad_uid}")
-                ad_query = f'''
-                from(bucket:"{INFLUXDB_BUCKET}")
-                    |> range(start: -1h)
-                    |> filter(fn: (r) => r["_measurement"] == "AdInfo")
-                    |> filter(fn: (r) => r["uid"] == "{ad_uid}")
-                    |> filter(fn: (r) => r["_field"] != "uid" and r["_field"] != "impression_id")
-                    |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-                '''
-                ad_result = client.query_api().query(query=ad_query, org=INFLUXDB_ORG)
-                logger.info(f"Query result for ad {ad_uid}: {ad_result}")
-                
-                for ad_table in ad_result:
-                    for ad_record in ad_table.records:
-                        ad = {
-                            "advertiser": {
-                                "advertiser_id": ad_record.values.get("advertiser_id"),
-                                "advertiser_name": ad_record.values.get("advertiser_name")
-                            },
-                            "campaign": {
-                                "campaign_id": ad_record.values.get("campaign_id"),
-                                "campaign_name": ad_record.values.get("campaign_name")
-                            },
-                            "ad": {
-                                "ad_id": ad_record.values.get("ad_id"),
-                                "ad_name": ad_record.values.get("ad_name"),
-                                "ad_text": ad_record.values.get("ad_text"),
-                                "ad_link": ad_record.values.get("ad_link"),
-                                "ad_position": ad_record.values.get("ad_position"),
-                                "ad_format": ad_record.values.get("ad_format")
-                            }
-                        }
-                        ads.append(ad)
-            
             message = {
-                "impression_id": impression_id,
+                "impression_id": record.values.get("impression_id"),
                 "user_ip": record.values.get("user_ip"),
                 "user_agent": record.values.get("user_agent"),
                 "state": record.values.get("state"),
                 "search_keywords": record.values.get("search_keywords"),
                 "session_id": record.values.get("session_id"),
                 "timestamp": record.values.get("timestamp"),
-                "ads": ads
+                "ads": json.loads(record.values.get("ads", "[]"))
             }
             messages.append(message)
     
