@@ -23,7 +23,7 @@ class DateTimeEncoder(json.JSONEncoder):
 INFLUXDB_URL = os.getenv("INFLUXDB_URL", "http://influxdb:8086")
 INFLUXDB_TOKEN = os.getenv("INFLUXDB_TOKEN", "")
 INFLUXDB_ORG = os.getenv("INFLUXDB_ORG", "myorg")
-INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "Ad Impression")
+INFLUXDB_BUCKET = os.getenv("INFLUXDB_BUCKET", "test_1")
 
 logger.info(f"InfluxDB Configuration - URL: {INFLUXDB_URL}, Org: {INFLUXDB_ORG}, Bucket: {INFLUXDB_BUCKET}")
 if not INFLUXDB_TOKEN:
@@ -60,11 +60,9 @@ except Exception as e:
 class Advertiser(BaseModel):
     advertiser_id: str
     advertiser_name: str
-
 class Campaign(BaseModel):
     campaign_id: str
     campaign_name: str
-
 class Ad(BaseModel):
     ad_id: str
     ad_name: str
@@ -72,11 +70,40 @@ class Ad(BaseModel):
     ad_link: str
     ad_position: int
     ad_format: str
-
 class AdInfo(BaseModel):
     advertiser: Advertiser
     campaign: Campaign
     ad: Ad
+
+class click_coordinates(BaseModel):
+    x: int
+    y: int
+    normalized_x: float
+    normalized_y: float
+class clicked_ad(BaseModel):
+    ad_id: str
+    ad_position: int
+    click_coordinates: click_coordinates
+    time_to_click: int
+class user_info(BaseModel):
+    user_ip: str
+    state: str
+    session_id: str
+
+class item(BaseModel):
+    product_id: str
+    quantity: int
+    unit_price: float
+class conversion_attributes(BaseModel):
+    order_id: str
+    items: List[item]
+class conversion_path(BaseModel):
+    event_type: str
+    timestamp: datetime
+class attribution_info(BaseModel):
+    time_to_convert: int
+    attribution_model: str
+    conversion_path: List[conversion_path]
 
 class ImpressionPayload(BaseModel):
     impression_id: str
@@ -88,9 +115,28 @@ class ImpressionPayload(BaseModel):
     session_id: str
     ads: List[AdInfo]
 
+class clickPayload(BaseModel):
+    click_id: str
+    impression_id: str
+    timestamp: datetime
+    clicked_ad: clicked_ad
+    user_info: user_info
+
+class conversionPayload(BaseModel):
+    conversion_id: str
+    click_id: str
+    impression_id: str
+    timestamp: datetime
+    conversion_type: str
+    conversion_value: float
+    conversion_currency: str
+    conversion_attributes: conversion_attributes
+    attribution_info: attribution_info
+    user_info: user_info
+
 app = FastAPI()
 
-@app.post("/send")
+@app.post("/api/events/impression")
 async def send_message(payload: ImpressionPayload):
     try:
         # Conexión a RabbitMQ
@@ -125,32 +171,74 @@ async def send_message(payload: ImpressionPayload):
     except Exception as e:
         logger.error(f"Error processing message: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
-
-@app.get("/messages")
-def get_messages():
-    query = f'''
-    from(bucket:"{INFLUXDB_BUCKET}")
-        |> range(start: -1h)
-        |> filter(fn: (r) => r["_measurement"] == "Ad Impression")
-        |> pivot(rowKey:["_time"], columnKey: ["_field"], valueColumn: "_value")
-        |> sort(columns: ["_time"], desc: true)
-        |> limit(n: 1)
-    '''
-    result = client.query_api().query(query=query, org=INFLUXDB_ORG)
     
-    messages = []
-    for table in result:
-        for record in table.records:
-            message = {
-                "impression_id": record.values.get("impression_id"),
-                "user_ip": record.values.get("user_ip"),
-                "user_agent": record.values.get("user_agent"),
-                "state": record.values.get("state"),
-                "search_keywords": record.values.get("search_keywords"),
-                "session_id": record.values.get("session_id"),
-                "timestamp": record.values.get("timestamp"),
-                "ads": json.loads(record.values.get("ads", "[]"))
-            }
-            messages.append(message)
+@app.post("/api/events/click")
+async def send_message(payload: clickPayload):
+    try:
+        # Conexión a RabbitMQ
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host='rabbitmq')
+        )
+        channel = connection.channel()
+        channel.queue_declare(queue='Ad Click')
+        
+        # Convertir el payload a JSON string usando el encoder personalizado
+        message_content = json.dumps(payload.dict(), cls=DateTimeEncoder)
+        logger.info(f"Processing message: {message_content}")
+        
+        # Enviar mensaje a RabbitMQ
+        channel.basic_publish(exchange='', routing_key='Ad Click', body=message_content)
+        connection.close()
+        
+        # Guardar en InfluxDB
+        point = Point("Ad Click") \
+            .field("click_id", payload.click_id) \
+            .field("impression_id", payload.impression_id) \
+            .field("timestamp", payload.timestamp.isoformat()) \
+            .field("clicked_ad", json.dumps(payload.clicked_ad.dict(), cls=DateTimeEncoder)) \
+            .field("user_info", json.dumps(payload.user_info.dict(), cls=DateTimeEncoder))
+        
+        write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+        
+        return {"message": "Message sent to RabbitMQ and stored in InfluxDB", "payload": payload.dict()}
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
     
-    return messages
+@app.post("/api/events/conversion")
+async def send_message(payload: conversionPayload):
+    try:
+        # Conexión a RabbitMQ
+        connection = pika.BlockingConnection(
+            pika.ConnectionParameters(host='rabbitmq')
+        )
+        channel = connection.channel()
+        channel.queue_declare(queue='Ad Conversion')
+        
+        # Convertir el payload a JSON string usando el encoder personalizado
+        message_content = json.dumps(payload.dict(), cls=DateTimeEncoder)
+        logger.info(f"Processing message: {message_content}")
+        
+        # Enviar mensaje a RabbitMQ
+        channel.basic_publish(exchange='', routing_key='Ad Conversion', body=message_content)
+        connection.close()
+        
+        # Guardar en InfluxDB
+        point = Point("Ad Conversion") \
+            .field("conversion_id", payload.conversion_id) \
+            .field("click_id", payload.click_id) \
+            .field("impression_id", payload.impression_id) \
+            .field("timestamp", payload.timestamp.isoformat()) \
+            .field("conversion_type", payload.conversion_type) \
+            .field("conversion_value", payload.conversion_value) \
+            .field("conversion_currency", payload.conversion_currency) \
+            .field("conversion_attributes", json.dumps(payload.conversion_attributes.dict(), cls=DateTimeEncoder)) \
+            .field("attribution_info", json.dumps(payload.attribution_info.dict(), cls=DateTimeEncoder)) \
+            .field("user_info", json.dumps(payload.user_info.dict(), cls=DateTimeEncoder))
+        
+        write_api.write(bucket=INFLUXDB_BUCKET, record=point)
+        
+        return {"message": "Message sent to RabbitMQ and stored in InfluxDB", "payload": payload.dict()}
+    except Exception as e:
+        logger.error(f"Error processing message: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Error processing message: {str(e)}")
