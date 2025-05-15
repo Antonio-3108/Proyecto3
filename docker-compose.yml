@@ -66,6 +66,18 @@ services:
       - INFLUXDB_BUCKET=test_1
     restart: unless-stopped
 
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3000:3000"
+    depends_on:
+      - influxdb
+    volumes:
+      - grafana-storage:/var/lib/grafana
+    environment:
+      - GF_SECURITY_ADMIN_USER=admin
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+
 volumes:
   influxdb_data:
-
+  grafana-storage:

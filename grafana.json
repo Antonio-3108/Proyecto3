@@ -1,0 +1,144 @@
+{
+    "annotations": {
+      "list": [
+        {
+          "builtIn": 1,
+          "datasource": "-- Grafana --",
+          "enable": true,
+          "hide": true,
+          "iconColor": "#e4e4e4",
+          "name": "Annotations & Alerts",
+          "type": "dashboard"
+        }
+      ]
+    },
+    "editable": true,
+    "schemaVersion": 37,
+    "style": "dark",
+    "tags": [],
+    "templating": {
+      "list": []
+    },
+    "time": {
+      "from": "now-7d",
+      "to": "now"
+    },
+    "timezone": "browser",
+    "title": "Ad Tracking Dashboard",
+    "uid": "ad-tracking-dashboard",
+    "version": 1,
+    "panels": [
+      {
+        "datasource": "influxdb",
+        "fieldConfig": {
+          "defaults": {
+            "custom": {},
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 0, "y": 0 },
+        "id": 1,
+        "options": {
+          "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+          "tooltip": { "mode": "single" }
+        },
+        "targets": [
+          {
+            "query": "from(bucket: \"test_1\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"impressions\")\n  |> aggregateWindow(every: 1m, fn: count, createEmpty: false)\n  |> yield(name: \"count\")",
+            "refId": "A"
+          }
+        ],
+        "title": "Impresiones por minuto",
+        "type": "timeseries"
+      },
+      {
+        "datasource": "influxdb",
+        "fieldConfig": {
+          "defaults": {
+            "custom": {},
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": { "h": 8, "w": 12, "x": 12, "y": 0 },
+        "id": 2,
+        "options": {
+          "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+          "tooltip": { "mode": "single" }
+        },
+        "targets": [
+          {
+            "query": "from(bucket: \"test_1\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"clicks\")\n  |> aggregateWindow(every: 1m, fn: count, createEmpty: false)\n  |> yield(name: \"count\")",
+            "refId": "A"
+          }
+        ],
+        "title": "Clicks por minuto",
+        "type": "timeseries"
+      },
+      {
+        "datasource": "influxdb",
+        "fieldConfig": {
+          "defaults": {
+            "custom": {},
+            "mappings": [],
+            "thresholds": {
+              "mode": "absolute",
+              "steps": [
+                {
+                  "color": "green",
+                  "value": null
+                },
+                {
+                  "color": "red",
+                  "value": 80
+                }
+              ]
+            }
+          },
+          "overrides": []
+        },
+        "gridPos": { "h": 8, "w": 24, "x": 0, "y": 8 },
+        "id": 3,
+        "options": {
+          "legend": { "displayMode": "list", "placement": "bottom", "showLegend": true },
+          "tooltip": { "mode": "single" }
+        },
+        "targets": [
+          {
+            "query": "from(bucket: \"test_1\")\n  |> range(start: -7d)\n  |> filter(fn: (r) => r._measurement == \"conversions\")\n  |> aggregateWindow(every: 1m, fn: count, createEmpty: false)\n  |> yield(name: \"count\")",
+            "refId": "A"
+          }
+        ],
+        "title": "Conversiones por minuto",
+        "type": "timeseries"
+      }
+    ]
+  }
+  
